@@ -1,0 +1,64 @@
+{
+  "name": "app-estudio-ideo",
+  "version": "1.0.0",
+  "description": "Estudio Ideo - Panel de Gestión",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TU_USUARIO_DE_GITHUB/estudio-ideo-app.git"
+  },
+  
+  "main": "main.js",
+  "scripts": {
+    "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "build:react": "vite build",
+    "build:electron": "electron-builder -w",
+    "empaquetar": "npm run build:react && npm run build:electron",
+    
+    
+    "publicar": "npm run build:react && electron-builder -w -p always"
+  },
+  "build": {
+    "appId": "com.estudioideo.app",
+    "productName": "Estudio Ideo",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "package.json",
+      "build/**/*"
+    ],
+    "win": {
+      "icon": "build/icono.ico",
+      "target": "nsis"
+    },
+    
+    
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "TU_USUARIO_DE_GITHUB",
+        "repo": "estudio-ideo-app"
+      }
+    ]
+  },
+  "dependencies": {
+    "electron-updater": "^6.1.7",
+    "firebase": "^10.12.2",
+    "leaflet": "^1.9.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "react-router-dom": "^6.24.0",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "electron": "^43.7.7",
+    "electron-builder": "^24.13.3",
+    "vite": "^5.3.1",
+    "wait-on": "^7.2.0"
+  }
+}

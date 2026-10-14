@@ -1,0 +1,96 @@
+/* Reseteamos los valores por defecto */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Estilo base de la aplicación: Fondo blanco limpio y tipografía profesional */
+body {
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background-color: #f8fafc; /* Blanco grisáceo muy suave, típico de apps corporativas */
+  color: #1e293b; /* Azul marino muy oscuro para una lectura perfecta */
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+/* --- ANIMACIÓN DE PULSACIÓN --- */
+/* Ideal para resaltar botones de acción principal o estados activos de fichaje */
+@keyframes pulseGlow {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+  }
+  70% {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 10px rgba(37, 99, 235, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0);
+  }
+}
+
+/* Clase de utilidad para aplicar la animación fácilmente en cualquier botón o indicador */
+.btn-pulse {
+  animation: pulseGlow 2s infinite;
+}
+
+/* Paleta de colores corporativos reutilizables en componentes */
+:root {
+  --primary-blue: #2563eb;      /* Azul principal corporativo */
+  --primary-hover: #1d4ed8;     /* Azul más oscuro para estados Hover */
+  --bg-card: #ffffff;           /* Fondo blanco puro para tarjetas y contenedores */
+  --border-color: #e2e8f0;      /* Gris sutil para bordes delicados */
+}
+/* --- ESTILOS PREMIUM PARA EL LOGIN --- */
+
+/* Efecto suave cuando haces clic en una caja de texto */
+.input-premium {
+  transition: all 0.3s ease;
+}
+.input-premium:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15) !important;
+}
+
+/* Efecto de elevación al pasar el ratón por el botón */
+.btn-premium {
+  transition: all 0.3s ease;
+}
+.btn-premium:hover {
+  background-color: #1d4ed8 !important;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+}
+/* --- ANIMACIONES PARA EL DASHBOARD --- */
+
+/* Animación de entrada suave para el panel */
+.fade-in {
+  animation: fadeIn 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Interacciones del menú lateral */
+.sidebar-item {
+  transition: all 0.3s ease;
+}
+.sidebar-item:hover {
+  background-color: rgba(37, 99, 235, 0.1);
+  transform: translateX(5px);
+  color: #2563eb !important;
+}
+
+/* Efecto de elevación en las tarjetas de resumen */
+.summary-card {
+  transition: all 0.4s ease;
+}
+.summary-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
+}

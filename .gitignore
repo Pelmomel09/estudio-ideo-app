@@ -1,0 +1,12 @@
+# Dependencias
+node_modules/
+
+# Carpetas de compilación y archivos pesados
+dist/
+dist-electron/
+*.exe
+*.asar
+
+# Archivos de entorno y sistema
+.env
+.DS_Store
