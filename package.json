@@ -1,10 +1,10 @@
 {
   "name": "app-estudio-ideo",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "Estudio Ideo - Panel de Gestión",
   "repository": {
     "type": "git",
-    "url": "https://github.com/TU_USUARIO_DE_GITHUB/estudio-ideo-app.git"
+    "url": "https://github.com/Pelmomel09/estudio-ideo-app.git"
   },
   
   "main": "main.js",
@@ -38,7 +38,7 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "TU_USUARIO_DE_GITHUB",
+        "owner": "Pelmomel09",
         "repo": "estudio-ideo-app"
       }
     ]

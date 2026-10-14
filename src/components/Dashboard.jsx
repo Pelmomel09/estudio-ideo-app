@@ -3,8 +3,6 @@ import { useOutletContext } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 const Dashboard = () => {
-  // 1. CONEXIÓN REAL: Extraemos los datos globales de la aplicación
-  // (Si por algún motivo están vacíos, les ponemos un array [] por defecto para que no falle)
   const context = useOutletContext();
   const proyectos = context?.proyectos || [];
   const horas = context?.horas || [];
@@ -13,106 +11,173 @@ const Dashboard = () => {
   const [nota, setNota] = useState('');
   const [usuario, setUsuario] = useState('Compañero');
   const [saludo, setSaludo] = useState('Bienvenido');
+  const [filtroTiempo, setFiltroTiempo] = useState('total'); 
+  
+  const TARIFA_KM = 0.26;
 
-  // 2. EFECTO DE INICIO: Leer el usuario real y calcular el saludo
   useEffect(() => {
-    // Leemos el usuario guardado en el paso de Login
     const datosGuardados = localStorage.getItem('estudioIdeoUsuario');
     if (datosGuardados) {
       const datosObj = JSON.parse(datosGuardados);
       setUsuario(datosObj.nombre);
     }
 
-    // EL TOQUE WOW: Saludo inteligente según la hora del día
     const horaActual = new Date().getHours();
     if (horaActual < 12) setSaludo('Buenos días');
     else if (horaActual < 20) setSaludo('Buenas tardes');
     else setSaludo('Buenas noches');
   }, []);
 
-  // 3. MATEMÁTICAS EN TIEMPO REAL: Calculamos los resúmenes automáticamente
-  const cantidadProyectos = proyectos.length;
-  
-  const gastosEuros = gastos
+  const filtrarPorFecha = (lista) => {
+    if (filtroTiempo === 'total') return lista;
+    
+    const ahora = new Date();
+    return lista.filter(item => {
+      if (!item.fecha) return true; 
+      const fechaItem = new Date(item.fecha);
+      
+      if (filtroTiempo === 'año') {
+        return fechaItem.getFullYear() === ahora.getFullYear();
+      }
+      if (filtroTiempo === 'mes') {
+        return fechaItem.getMonth() === ahora.getMonth() && fechaItem.getFullYear() === ahora.getFullYear();
+      }
+      if (filtroTiempo === 'semana') {
+        const unDia = 24 * 60 * 60 * 1000;
+        const diferenciaDias = Math.round(Math.abs((ahora - fechaItem) / unDia));
+        return diferenciaDias <= 7;
+      }
+      return true;
+    });
+  };
+
+  const gastosFiltrados = filtrarPorFecha(gastos);
+  const horasFiltradas = filtrarPorFecha(horas);
+  const cantidadProyectos = proyectos.length; 
+
+  const gastosNormales = gastosFiltrados
     .filter(g => g.tipoGasto !== 'kilometraje')
     .reduce((total, g) => total + parseFloat(g.cantidad || 0), 0);
     
-  const totalKm = gastos
+  const totalKm = gastosFiltrados
     .filter(g => g.tipoGasto === 'kilometraje')
     .reduce((total, g) => total + parseFloat(g.cantidad || 0), 0);
 
-  // 4. EL TOQUE WOW 2: Agrupamos las horas por fecha para la gráfica real
-  // Si no hay horas, ponemos un dato ficticio a cero para que la gráfica no desaparezca
+  const gastosEuros = gastosNormales + (totalKm * TARIFA_KM);
+
+  // NUEVO: Función para generar y descargar el CSV
+  const exportarCSV = () => {
+    // 1. Preparamos los textos del archivo
+    const cabeceras = "Concepto,Valor\n";
+    const filas = [
+      `Gastos Acumulados,${gastosEuros.toFixed(2)} Euros`,
+      `Proyectos Activos,${cantidadProyectos}`,
+      `Kilometros Recorridos,${totalKm.toFixed(0)} Km`,
+      `Entradas Fichadas,${horasFiltradas.length} Jornadas`
+    ].join("\n");
+
+    const contenidoCSV = cabeceras + filas;
+
+    // 2. Creamos el archivo virtual (Blob)
+    const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    // 3. Forzamos la descarga en el navegador/Electron
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.setAttribute('download', `Resumen_Ideo_${filtroTiempo}.csv`);
+    document.body.appendChild(enlace);
+    enlace.click();
+    document.body.removeChild(enlace);
+  };
+
+  const handleReset = () => {
+    const confirmar = window.confirm("⚠️ ATENCIÓN: ¿Estás seguro de que quieres borrar a cero todos los datos del Dashboard?");
+    if (confirmar) {
+      alert("Comando de reseteo activado.");
+    }
+  };
+
   let datosGraficaReal = [];
-  if (horas.length === 0) {
+  if (horasFiltradas.length === 0) {
     datosGraficaReal = [{ dia: 'Sin datos', horas: 0 }];
   } else {
-    // Agrupamos las horas trabajadas por día
-    const horasPorDia = horas.reduce((acc, h) => {
+    const horasPorDia = horasFiltradas.reduce((acc, h) => {
       acc[h.fecha] = (acc[h.fecha] || 0) + parseFloat(h.horasTotales);
       return acc;
     }, {});
     
-    // Lo convertimos al formato que necesita Recharts
     datosGraficaReal = Object.keys(horasPorDia).map(fecha => ({
-      dia: fecha.substring(5), // Quitamos el año para que se vea "09-23" en vez de "2026-09-23"
+      dia: fecha.substring(5), 
       horas: horasPorDia[fecha]
-    })).sort((a, b) => a.dia.localeCompare(b.dia)); // Ordenamos por fecha
+    })).sort((a, b) => a.dia.localeCompare(b.dia)); 
   }
 
   return (
     <main style={styles.mainContent}>
-      
-      {/* CABECERA CON USUARIO REAL Y AVATAR */}
       <header style={styles.header}>
         <div>
           <h1 style={styles.welcomeText}>Panel de Control</h1>
           <p style={styles.dateText}>{saludo}, {usuario}. Aquí tienes tu resumen real.</p>
         </div>
         
-        {/* AVATAR + NOMBRE ARRIBA A LA DERECHA */}
-        <div style={styles.userSection}>
-          <span style={styles.userName}>{usuario}</span>
-          <div style={styles.avatar}>
-            {usuario.charAt(0).toUpperCase()}
+        <div style={styles.userSectionGroup}>
+          
+          {/* NUEVO BOTÓN PARA EXPORTAR */}
+          <button style={styles.exportButton} onClick={exportarCSV}>
+            ↓ Exportar Excel
+          </button>
+
+          <button style={styles.resetButton} onClick={handleReset}>
+            ↺ Resetear Panel
+          </button>
+          
+          <div style={styles.userSection}>
+            <span style={styles.userName}>{usuario}</span>
+            <div style={styles.avatar}>
+              {usuario.charAt(0).toUpperCase()}
+            </div>
           </div>
         </div>
       </header>
 
       <div className="fade-in">
-        {/* TARJETAS DE RESUMEN (Ahora 100% dinámicas) */}
+        <div style={styles.tabsContainer}>
+          <button style={filtroTiempo === 'semana' ? {...styles.tab, ...styles.tabActive} : styles.tab} onClick={() => setFiltroTiempo('semana')}>Últimos 7 días</button>
+          <button style={filtroTiempo === 'mes' ? {...styles.tab, ...styles.tabActive} : styles.tab} onClick={() => setFiltroTiempo('mes')}>Este Mes</button>
+          <button style={filtroTiempo === 'año' ? {...styles.tab, ...styles.tabActive} : styles.tab} onClick={() => setFiltroTiempo('año')}>Este Año</button>
+          <button style={filtroTiempo === 'total' ? {...styles.tab, ...styles.tabActive} : styles.tab} onClick={() => setFiltroTiempo('total')}>Histórico Total</button>
+        </div>
+
         <div style={styles.summaryGrid}>
           <div className="summary-card" style={{...styles.card, borderBottom: '4px solid #ef4444'}}>
             <p style={styles.cardLabel}>Gastos Acumulados</p>
             <h3 style={styles.cardValue}>{gastosEuros.toFixed(2)} €</h3>
-            <p style={styles.cardTrend}>Dietas y material registrados</p>
+            <p style={styles.cardTrend}>Incluye {totalKm.toFixed(0)} km a {TARIFA_KM}€/km</p>
           </div>
           
           <div className="summary-card" style={{...styles.card, borderBottom: '4px solid #3b82f6'}}>
             <p style={styles.cardLabel}>Proyectos Activos</p>
             <h3 style={styles.cardValue}>{cantidadProyectos}</h3>
-            {/* Pequeña barra de progreso visual para darle un toque premium */}
             <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginTop: '8px' }}>
                <div style={{ width: cantidadProyectos > 0 ? '100%' : '0%', height: '100%', backgroundColor: '#3b82f6', borderRadius: '2px' }}></div>
             </div>
           </div>
           
           <div className="summary-card" style={{...styles.card, borderBottom: '4px solid #f59e0b'}}>
-            <p style={styles.cardLabel}>Kilómetros Registrados</p>
+            <p style={styles.cardLabel}>Kilómetros Recorridos</p>
             <h3 style={styles.cardValue}>{totalKm.toFixed(0)} Km</h3>
-            <p style={styles.cardTrend}>En tus últimos viajes</p>
+            <p style={styles.cardTrend}>En el periodo seleccionado</p>
           </div>
           
           <div className="summary-card" style={{...styles.card, borderBottom: '4px solid #10b981'}}>
             <p style={styles.cardLabel}>Total de Entradas</p>
-            <h3 style={styles.cardValue}>{horas.length}</h3>
-            <p style={styles.cardTrend}>Jornadas fichadas hasta hoy</p>
+            <h3 style={styles.cardValue}>{horasFiltradas.length}</h3>
+            <p style={styles.cardTrend}>Jornadas fichadas</p>
           </div>
         </div>
 
         <div style={styles.bottomGrid}>
-          
-          {/* GRÁFICA REAL CON TUS DATOS DE HORAS */}
           <div className="summary-card" style={styles.chartCard}>
             <h3 style={styles.sectionTitle}>Curva de Horas Fichadas</h3>
             <div style={{ height: '280px', width: '100%' }}>
@@ -143,30 +208,37 @@ const Dashboard = () => {
               placeholder="Escribe aquí mediciones urgentes o recordatorios..."
             ></textarea>
           </div>
-          
         </div>
       </div>
     </main>
   );
 };
 
-// Estilos de la interfaz
 const styles = {
   mainContent: { flex: 1, padding: '40px 50px', overflowY: 'auto' },
-  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px' },
+  header: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' },
   welcomeText: { fontSize: '32px', fontWeight: '800', color: '#0f172a', margin: 0, letterSpacing: '-0.5px' },
   dateText: { fontSize: '16px', color: '#64748b', margin: '8px 0 0 0' },
   
-  // Novedad: Contenedor para alinear Nombre y Avatar
+  userSectionGroup: { display: 'flex', alignItems: 'center', gap: '15px' },
   userSection: { display: 'flex', alignItems: 'center', gap: '15px', backgroundColor: '#ffffff', padding: '8px 16px', borderRadius: '50px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' },
   userName: { fontSize: '15px', fontWeight: '700', color: '#1e293b' },
   avatar: { width: '40px', height: '40px', backgroundColor: '#2563eb', color: '#ffffff', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '18px', fontWeight: 'bold' },
   
+  // NUEVO ESTILO: Botón verde para exportar
+  exportButton: { backgroundColor: '#dcfce7', color: '#16a34a', border: '1px solid #86efac', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '5px' },
+  resetButton: { backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #f87171', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '5px' },
+  
+  tabsContainer: { display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' },
+  tab: { padding: '8px 16px', borderRadius: '20px', border: 'none', backgroundColor: '#f1f5f9', color: '#64748b', fontSize: '14px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s' },
+  tabActive: { backgroundColor: '#1e293b', color: '#ffffff' },
+
   summaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', marginBottom: '30px' },
   card: { backgroundColor: '#ffffff', padding: '24px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' },
   cardLabel: { color: '#64748b', fontSize: '14px', fontWeight: '600', margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.5px' },
   cardValue: { color: '#0f172a', fontSize: '32px', fontWeight: '800', margin: '0 0 8px 0' },
   cardTrend: { color: '#94a3b8', fontSize: '13px', margin: 0 },
+  
   bottomGrid: { display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' },
   chartCard: { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' },
   sectionTitle: { fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '24px', marginTop: 0 },
