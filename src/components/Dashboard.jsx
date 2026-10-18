@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import Calendar from 'react-calendar';
+import 'react-calendar/dist/Calendar.css'; // Los estilos por defecto del calendario
 
 const Dashboard = () => {
   const context = useOutletContext();
@@ -8,10 +10,10 @@ const Dashboard = () => {
   const horas = context?.horas || [];
   const gastos = context?.gastos || [];
 
-  const [nota, setNota] = useState('');
   const [usuario, setUsuario] = useState('Compañero');
   const [saludo, setSaludo] = useState('Bienvenido');
   const [filtroTiempo, setFiltroTiempo] = useState('total'); 
+  const [fechaCalendario, setFechaCalendario] = useState(new Date()); // Estado para el calendario
   
   const TARIFA_KM = 0.26;
 
@@ -65,32 +67,6 @@ const Dashboard = () => {
 
   const gastosEuros = gastosNormales + (totalKm * TARIFA_KM);
 
-  // NUEVO: Función para generar y descargar el CSV
-  const exportarCSV = () => {
-    // 1. Preparamos los textos del archivo
-    const cabeceras = "Concepto,Valor\n";
-    const filas = [
-      `Gastos Acumulados,${gastosEuros.toFixed(2)} Euros`,
-      `Proyectos Activos,${cantidadProyectos}`,
-      `Kilometros Recorridos,${totalKm.toFixed(0)} Km`,
-      `Entradas Fichadas,${horasFiltradas.length} Jornadas`
-    ].join("\n");
-
-    const contenidoCSV = cabeceras + filas;
-
-    // 2. Creamos el archivo virtual (Blob)
-    const blob = new Blob([contenidoCSV], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    
-    // 3. Forzamos la descarga en el navegador/Electron
-    const enlace = document.createElement('a');
-    enlace.href = url;
-    enlace.setAttribute('download', `Resumen_Ideo_${filtroTiempo}.csv`);
-    document.body.appendChild(enlace);
-    enlace.click();
-    document.body.removeChild(enlace);
-  };
-
   const handleReset = () => {
     const confirmar = window.confirm("⚠️ ATENCIÓN: ¿Estás seguro de que quieres borrar a cero todos los datos del Dashboard?");
     if (confirmar) {
@@ -122,12 +98,6 @@ const Dashboard = () => {
         </div>
         
         <div style={styles.userSectionGroup}>
-          
-          {/* NUEVO BOTÓN PARA EXPORTAR */}
-          <button style={styles.exportButton} onClick={exportarCSV}>
-            ↓ Exportar Excel
-          </button>
-
           <button style={styles.resetButton} onClick={handleReset}>
             ↺ Resetear Panel
           </button>
@@ -199,14 +169,16 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="summary-card" style={styles.notesCard}>
-            <h3 style={styles.sectionTitle}>Notas de Obra Rápidas</h3>
-            <textarea 
-              style={styles.notepad} 
-              value={nota}
-              onChange={(e) => setNota(e.target.value)}
-              placeholder="Escribe aquí mediciones urgentes o recordatorios..."
-            ></textarea>
+          {/* NUEVA SECCIÓN: CALENDARIO PROFESIONAL */}
+          <div className="summary-card" style={styles.calendarCard}>
+            <h3 style={styles.sectionTitle}>Calendario de Actividad</h3>
+            <div style={styles.calendarContainer}>
+              <Calendar 
+                onChange={setFechaCalendario} 
+                value={fechaCalendario} 
+                className="custom-calendar" // Clase para sobreescribir estilos si quisieras en un futuro
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -225,8 +197,6 @@ const styles = {
   userName: { fontSize: '15px', fontWeight: '700', color: '#1e293b' },
   avatar: { width: '40px', height: '40px', backgroundColor: '#2563eb', color: '#ffffff', borderRadius: '50%', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '18px', fontWeight: 'bold' },
   
-  // NUEVO ESTILO: Botón verde para exportar
-  exportButton: { backgroundColor: '#dcfce7', color: '#16a34a', border: '1px solid #86efac', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '5px' },
   resetButton: { backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #f87171', padding: '10px 16px', borderRadius: '8px', fontSize: '14px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', gap: '5px' },
   
   tabsContainer: { display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' },
@@ -242,8 +212,10 @@ const styles = {
   bottomGrid: { display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '24px' },
   chartCard: { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' },
   sectionTitle: { fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '24px', marginTop: 0 },
-  notesCard: { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', display: 'flex', flexDirection: 'column' },
-  notepad: { flex: 1, padding: '16px', borderRadius: '10px', border: '1.5px solid #e2e8f0', backgroundColor: '#f8fafc', fontSize: '15px', color: '#1e293b', resize: 'none', outline: 'none', lineHeight: '1.5', minHeight: '200px' }
+  
+  // ESTILOS PARA LA TARJETA DEL CALENDARIO
+  calendarCard: { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', display: 'flex', flexDirection: 'column' },
+  calendarContainer: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }
 };
 
 export default Dashboard;

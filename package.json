@@ -1,20 +1,17 @@
 {
   "name": "app-estudio-ideo",
-  "version": "1.0.2",
+  "version": "1.0.6",
   "description": "Estudio Ideo - Panel de Gestión",
   "repository": {
     "type": "git",
     "url": "https://github.com/Pelmomel09/estudio-ideo-app.git"
   },
-  
   "main": "main.js",
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build:react": "vite build",
     "build:electron": "electron-builder -w",
     "empaquetar": "npm run build:react && npm run build:electron",
-    
-    
     "publicar": "npm run build:react && electron-builder -w -p always"
   },
   "build": {
@@ -33,13 +30,17 @@
       "icon": "build/icono.ico",
       "target": "nsis"
     },
-    
-    
+    "nsis": {
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Estudio Ideo"
+    },
     "publish": [
       {
         "provider": "github",
         "owner": "Pelmomel09",
-        "repo": "estudio-ideo-app"
+        "repo": "estudio-ideo-app",
+        "releaseType": "release"
       }
     ]
   },
@@ -49,6 +50,7 @@
     "leaflet": "^1.9.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-calendar": "^5.0.0",
     "react-leaflet": "^4.2.1",
     "react-router-dom": "^6.24.0",
     "recharts": "^2.12.7"
