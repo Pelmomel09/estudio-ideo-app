@@ -1,7 +1,7 @@
+// firebase.js
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
-
+import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 const firebaseConfig = {
   apiKey: "AIzaSyBHZgmn0ouZuV-mFDX5uVQ3-GD5S0WnMGk",
   authDomain: "app-estudio-ideo.firebaseapp.com",
@@ -12,6 +12,18 @@ const firebaseConfig = {
   measurementId: "G-XNEZTFRDKF"
 };
 
+
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-export const auth = getAuth(app);
+const db = getFirestore(app);
+const auth = getAuth(app);
+
+// FORZAR INICIO DE SESIÓN AUTOMÁTICO EN EL MÓVIL
+setPersistence(auth, browserLocalPersistence)
+  .then(() => {
+    console.log("Sesión automática activada correctamente.");
+  })
+  .catch((error) => {
+    console.error("Error al configurar la persistencia de sesión:", error);
+  });
+
+export { db, auth };

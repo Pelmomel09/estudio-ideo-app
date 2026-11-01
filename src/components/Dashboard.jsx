@@ -2,33 +2,47 @@ import React, { useState, useEffect } from 'react';
 import { useOutletContext } from 'react-router-dom';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Calendar from 'react-calendar';
-import 'react-calendar/dist/Calendar.css'; // Los estilos por defecto del calendario
+import 'react-calendar/dist/Calendar.css';
+
+// 1. AÑADIMOS arrayUnion A LAS IMPORTACIONES DE FIREBASE
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 
 const Dashboard = () => {
-  const context = useOutletContext();
-  const proyectos = context?.proyectos || [];
-  const horas = context?.horas || [];
-  const gastos = context?.gastos || [];
+  const context = useOutletContext() || {};
+  const proyectos = context.proyectos || [];
+  const horas = context.horas || [];
+  const gastos = context.gastos || [];
+  const ajustes = context.ajustes || {};
+  const nombreUsuarioActual = context.nombreUsuarioActual || 'Compañero';
 
   const [usuario, setUsuario] = useState('Compañero');
   const [saludo, setSaludo] = useState('Bienvenido');
   const [filtroTiempo, setFiltroTiempo] = useState('total'); 
-  const [fechaCalendario, setFechaCalendario] = useState(new Date()); // Estado para el calendario
+  const [fechaCalendario, setFechaCalendario] = useState(new Date());
   
-  const TARIFA_KM = 0.26;
+  const TARIFA_KM = parseFloat(ajustes.precioKm) || 0.29;
+  const MONEDA = ajustes.moneda || '€';
+  const COLOR_ACENTO = ajustes.colorAcento || '#2563eb';
 
   useEffect(() => {
     const datosGuardados = localStorage.getItem('estudioIdeoUsuario');
     if (datosGuardados) {
-      const datosObj = JSON.parse(datosGuardados);
-      setUsuario(datosObj.nombre);
+      try {
+        const datosObj = JSON.parse(datosGuardados);
+        if (datosObj.nombre) setUsuario(datosObj.nombre);
+      } catch (e) {
+        console.error(e);
+      }
+    } else if (nombreUsuarioActual) {
+      setUsuario(nombreUsuarioActual);
     }
 
     const horaActual = new Date().getHours();
     if (horaActual < 12) setSaludo('Buenos días');
     else if (horaActual < 20) setSaludo('Buenas tardes');
     else setSaludo('Buenas noches');
-  }, []);
+  }, [nombreUsuarioActual]);
 
   const filtrarPorFecha = (lista) => {
     if (filtroTiempo === 'total') return lista;
@@ -53,9 +67,28 @@ const Dashboard = () => {
     });
   };
 
-  const gastosFiltrados = filtrarPorFecha(gastos);
-  const horasFiltradas = filtrarPorFecha(horas);
+  const miNombreMin = (nombreUsuarioActual || '').trim().toLowerCase();
+
+  const misGastos = gastos.filter(g => {
+    const esMioFlag = g._esMio === true;
+    const autorGasto = (g.creadoPor || '').trim().toLowerCase();
+    return esMioFlag || (autorGasto && miNombreMin && autorGasto === miNombreMin);
+  });
+
+  const misHoras = horas.filter(h => {
+    const esMioFlag = h._esMio === true;
+    const autorHora = (h.creadoPor || '').trim().toLowerCase();
+    return esMioFlag || (autorHora && miNombreMin && autorHora === miNombreMin);
+  });
+
+  const gastosFiltrados = filtrarPorFecha(misGastos);
+  const horasFiltradas = filtrarPorFecha(misHoras);
   const cantidadProyectos = proyectos.length; 
+
+  const fechaHoyStr = new Date().toISOString().split('T')[0];
+  const totalHorasHoy = misHoras
+    .filter(h => h.fecha === fechaHoyStr)
+    .reduce((total, h) => total + (parseFloat(h.horasTotales) || 0), 0);
 
   const gastosNormales = gastosFiltrados
     .filter(g => g.tipoGasto !== 'kilometraje')
@@ -65,12 +98,48 @@ const Dashboard = () => {
     .filter(g => g.tipoGasto === 'kilometraje')
     .reduce((total, g) => total + parseFloat(g.cantidad || 0), 0);
 
-  const gastosEuros = gastosNormales + (totalKm * TARIFA_KM);
+  const gastosTotales = gastosNormales + (totalKm * TARIFA_KM);
 
-  const handleReset = () => {
-    const confirmar = window.confirm("⚠️ ATENCIÓN: ¿Estás seguro de que quieres borrar a cero todos los datos del Dashboard?");
-    if (confirmar) {
-      alert("Comando de reseteo activado.");
+  // 2. FUNCIÓN DE ARCHIVADO (Soft Delete) CONECTADA A FIREBASE
+  const handleReset = async () => {
+    const confirmar1 = window.confirm("⚠️ ATENCIÓN: Vas a reiniciar tu panel. Los datos se archivarán en la base de datos de forma segura pero desaparecerán de la vista actual. ¿Continuar?");
+    
+    if (confirmar1) {
+      const confirmar2 = window.confirm("🚨 ÚLTIMO AVISO: Tu panel se pondrá a cero. ¿Archivar y limpiar ahora?");
+      
+      if (confirmar2) {
+        try {
+          const usuario = auth.currentUser;
+          if (!usuario) {
+            alert("❌ Error: No se detectó al usuario activo.");
+            return;
+          }
+
+          const userDocRef = doc(db, "usuarios", usuario.uid);
+          
+          // Preparamos los datos a actualizar en la base de datos
+          const actualizaciones = {
+            horas: [], // Vaciamos la vista principal de horas
+            gastos: [] // Vaciamos la vista principal de gastos
+          };
+
+          // Si hay datos, los movemos al archivo histórico de Firebase
+          if (horas.length > 0) {
+            actualizaciones.horasArchivadas = arrayUnion(...horas);
+          }
+          if (gastos.length > 0) {
+            actualizaciones.gastosArchivados = arrayUnion(...gastos);
+          }
+          
+          // Enviamos la orden a la base de datos
+          await updateDoc(userDocRef, actualizaciones);
+
+          alert("✅ Panel reseteado con éxito. Tus datos antiguos han sido archivados de forma segura.");
+        } catch (error) {
+          console.error("Error al archivar datos:", error);
+          alert("❌ Hubo un error al intentar archivar los datos en la nube.");
+        }
+      }
     }
   };
 
@@ -94,7 +163,7 @@ const Dashboard = () => {
       <header style={styles.header}>
         <div>
           <h1 style={styles.welcomeText}>Panel de Control</h1>
-          <p style={styles.dateText}>{saludo}, {usuario}. Aquí tienes tu resumen real.</p>
+          <p style={styles.dateText}>{saludo}, {usuario}. Tus gastos personales y actividad real.</p>
         </div>
         
         <div style={styles.userSectionGroup}>
@@ -104,7 +173,7 @@ const Dashboard = () => {
           
           <div style={styles.userSection}>
             <span style={styles.userName}>{usuario}</span>
-            <div style={styles.avatar}>
+            <div style={{ ...styles.avatar, backgroundColor: COLOR_ACENTO }}>
               {usuario.charAt(0).toUpperCase()}
             </div>
           </div>
@@ -121,13 +190,13 @@ const Dashboard = () => {
 
         <div style={styles.summaryGrid}>
           <div className="summary-card" style={{...styles.card, borderBottom: '4px solid #ef4444'}}>
-            <p style={styles.cardLabel}>Gastos Acumulados</p>
-            <h3 style={styles.cardValue}>{gastosEuros.toFixed(2)} €</h3>
-            <p style={styles.cardTrend}>Incluye {totalKm.toFixed(0)} km a {TARIFA_KM}€/km</p>
+            <p style={styles.cardLabel}>Mis Gastos Personales</p>
+            <h3 style={styles.cardValue}>{gastosTotales.toFixed(2)} {MONEDA}</h3>
+            <p style={styles.cardTrend}>Incluye {totalKm.toFixed(0)} km a {TARIFA_KM}{MONEDA}/km</p>
           </div>
           
           <div className="summary-card" style={{...styles.card, borderBottom: '4px solid #3b82f6'}}>
-            <p style={styles.cardLabel}>Proyectos Activos</p>
+            <p style={styles.cardLabel}>Proyectos Accesibles</p>
             <h3 style={styles.cardValue}>{cantidadProyectos}</h3>
             <div style={{ width: '100%', height: '4px', backgroundColor: '#e2e8f0', borderRadius: '2px', marginTop: '8px' }}>
                <div style={{ width: cantidadProyectos > 0 ? '100%' : '0%', height: '100%', backgroundColor: '#3b82f6', borderRadius: '2px' }}></div>
@@ -135,15 +204,15 @@ const Dashboard = () => {
           </div>
           
           <div className="summary-card" style={{...styles.card, borderBottom: '4px solid #f59e0b'}}>
-            <p style={styles.cardLabel}>Kilómetros Recorridos</p>
+            <p style={styles.cardLabel}>Mis Kilómetros</p>
             <h3 style={styles.cardValue}>{totalKm.toFixed(0)} Km</h3>
-            <p style={styles.cardTrend}>En el periodo seleccionado</p>
+            <p style={styles.cardTrend}>Tarifa activa: {TARIFA_KM} {MONEDA}/km</p>
           </div>
           
           <div className="summary-card" style={{...styles.card, borderBottom: '4px solid #10b981'}}>
-            <p style={styles.cardLabel}>Total de Entradas</p>
-            <h3 style={styles.cardValue}>{horasFiltradas.length}</h3>
-            <p style={styles.cardTrend}>Jornadas fichadas</p>
+            <p style={styles.cardLabel}>Horas de Hoy</p>
+            <h3 style={styles.cardValue}>{totalHorasHoy.toFixed(2)} h</h3>
+            <p style={styles.cardTrend}>{horasFiltradas.length} fichajes en total</p>
           </div>
         </div>
 
@@ -155,28 +224,27 @@ const Dashboard = () => {
                 <AreaChart data={datosGraficaReal} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorHoras" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                      <stop offset="5%" stopColor={COLOR_ACENTO} stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor={COLOR_ACENTO} stopOpacity={0}/>
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
                   <XAxis dataKey="dia" stroke="#64748b" fontSize={12} />
                   <YAxis stroke="#64748b" fontSize={12} />
                   <Tooltip />
-                  <Area type="monotone" dataKey="horas" stroke="#2563eb" fillOpacity={1} fill="url(#colorHoras)" />
+                  <Area type="monotone" dataKey="horas" stroke={COLOR_ACENTO} fillOpacity={1} fill="url(#colorHoras)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* NUEVA SECCIÓN: CALENDARIO PROFESIONAL */}
           <div className="summary-card" style={styles.calendarCard}>
             <h3 style={styles.sectionTitle}>Calendario de Actividad</h3>
             <div style={styles.calendarContainer}>
               <Calendar 
                 onChange={setFechaCalendario} 
                 value={fechaCalendario} 
-                className="custom-calendar" // Clase para sobreescribir estilos si quisieras en un futuro
+                className="custom-calendar"
               />
             </div>
           </div>
@@ -213,7 +281,6 @@ const styles = {
   chartCard: { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)' },
   sectionTitle: { fontSize: '18px', fontWeight: '700', color: '#0f172a', marginBottom: '24px', marginTop: 0 },
   
-  // ESTILOS PARA LA TARJETA DEL CALENDARIO
   calendarCard: { backgroundColor: '#ffffff', padding: '30px', borderRadius: '16px', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)', display: 'flex', flexDirection: 'column' },
   calendarContainer: { flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }
 };

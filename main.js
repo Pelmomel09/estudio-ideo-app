@@ -32,8 +32,10 @@ const createWindow = () => {
 
 app.whenReady().then(() => {
   createWindow();
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+
+  // ESTA LÍNEA ES LA MAGIA: Obliga a la app a buscar la nueva versión en GitHub al abrirse
+  autoUpdater.checkForUpdatesAndNotify().catch(err => {
+    console.error("Error al buscar actualizaciones:", err);
   });
 });
 

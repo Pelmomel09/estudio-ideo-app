@@ -1,6 +1,6 @@
 {
   "name": "app-estudio-ideo",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "description": "Estudio Ideo - Panel de Gestión",
   "repository": {
     "type": "git",
@@ -31,7 +31,10 @@
       "target": "nsis"
     },
     "nsis": {
-      "createDesktopShortcut": true,
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Estudio Ideo"
     },

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Outlet } from 'react-router-dom';
-// IMPORTAMOS FUNCIONES CLAVE DE FIREBASE AUTH Y FIRESTORE
 import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -17,23 +16,20 @@ const ajustesPorDefecto = {
 const Panel = () => {
   const navigate = useNavigate();
   
-  // ESTADOS DE LA APLICACIÓN
   const [proyectos, setProyectosState] = useState([]);
   const [horas, setHorasState] = useState([]);
   const [gastos, setGastosState] = useState([]);
   const [ajustes, setAjustesState] = useState(ajustesPorDefecto);
+  const [nombreUsuarioActual, setNombreUsuarioActual] = useState('Compañero');
   
   const [toast, setToast] = useState({ show: false, mensaje: '' });
-  
-  // ESTADOS DE CONEXIÓN A LA NUBE
   const [usuarioActivo, setUsuarioActivo] = useState(null);
   const [cargandoDatos, setCargandoDatos] = useState(true);
 
-  // Referencia para recordar los documentos originales de Firestore sin causar recargas
   const mapaUsuariosRef = useRef({});
 
-  // 1. FUNCIÓN AUXILIAR: Obtener el nombre de usuario actual en minúsculas
-  const obtenerNombreUsuarioActual = (user) => {
+  // 1. FUNCIÓN AUXILIAR: Obtener el nombre del usuario actual
+  const obtenerNombreUsuario = (user) => {
     let nombre = '';
     const datosGuardados = localStorage.getItem('estudioIdeoUsuario');
     if (datosGuardados) {
@@ -46,20 +42,24 @@ const Panel = () => {
     }
     if (!nombre && user?.displayName) nombre = user.displayName;
     if (!nombre && user?.email) nombre = user.email.split('@')[0];
-    return nombre.trim().toLowerCase();
+    return (nombre || 'Usuario').trim();
   };
 
-  // 2. AL ENTRAR: VERIFICAMOS EL USUARIO Y ESCUCHAMOS PROYECTOS PROPIOS Y COMPARTIDOS
+  // 2. ESCUCHA EN TIEMPO REAL DE PROYECTOS PROPIOS Y COMPARTIDOS
   useEffect(() => {
     let unsubscribeFirestore = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUsuarioActivo(user.uid);
-        const miNombre = obtenerNombreUsuarioActual(user);
+        const miNombreOriginal = obtenerNombreUsuario(user);
+        const miNombreMinusculas = miNombreOriginal.toLowerCase();
         const miEmail = (user.email || '').trim().toLowerCase();
+        setNombreUsuarioActual(miNombreOriginal);
 
-        // Escuchamos en tiempo real la colección "usuarios" para detectar proyectos compartidos
+        // Guardamos nuestro nombre en nuestro documento para que el equipo nos identifique
+        setDoc(doc(db, 'usuarios', user.uid), { nombreUsuario: miNombreOriginal }, { merge: true });
+
         const colRef = collection(db, 'usuarios');
         unsubscribeFirestore = onSnapshot(colRef, (snapshot) => {
           const todosLosUsuarios = {};
@@ -69,36 +69,37 @@ const Panel = () => {
 
           mapaUsuariosRef.current = todosLosUsuarios;
 
-          // A) Cargamos los ajustes personales de nuestro propio documento
           const misDatos = todosLosUsuarios[user.uid] || {};
           if (misDatos.ajustes) {
             setAjustesState({ ...ajustesPorDefecto, ...misDatos.ajustes });
           }
 
-          // B) Reunimos nuestros proyectos + los proyectos donde somos colaboradores
+          // A) Reunimos proyectos propios y compartidos
           const proyectosCombinados = [];
           const idsProyectosVistos = new Set();
 
           Object.entries(todosLosUsuarios).forEach(([uidDoc, datosDoc]) => {
+            const nombrePropietarioDoc = datosDoc.nombreUsuario || 'Compañero';
             const listaProyectosDoc = datosDoc.proyectos || [];
+            
             listaProyectosDoc.forEach((proy) => {
               const esMio = uidDoc === user.uid;
               const colaboradoresLimpiados = (proy.colaboradores || []).map(c => String(c).trim().toLowerCase());
-              const soyColaborador = (miNombre && colaboradoresLimpiados.includes(miNombre)) ||
+              const soyColaborador = (miNombreMinusculas && colaboradoresLimpiados.includes(miNombreMinusculas)) ||
                                      (miEmail && colaboradoresLimpiados.includes(miEmail));
 
               if ((esMio || soyColaborador) && !idsProyectosVistos.has(String(proy.id))) {
                 idsProyectosVistos.add(String(proy.id));
                 proyectosCombinados.push({
                   ...proy,
-                  // Guardamos internamente quién es el dueño original del documento
+                  creadorNombre: proy.creadorNombre || nombrePropietarioDoc,
                   _uidPropietario: proy._uidPropietario || uidDoc
                 });
               }
             });
           });
 
-          // C) Reunimos todos los gastos y horas asociados a nuestros proyectos activos
+          // B) Reunimos gastos y horas identificando quién creó cada uno
           const gastosCombinados = [];
           const idsGastosVistos = new Set();
           const horasCombinadas = [];
@@ -106,22 +107,41 @@ const Panel = () => {
 
           Object.entries(todosLosUsuarios).forEach(([uidDoc, datosDoc]) => {
             const esMiDocumento = uidDoc === user.uid;
+            const autorPorDefecto = datosDoc.nombreUsuario || (esMiDocumento ? miNombreOriginal : 'Compañero');
 
-            // Filtramos Gastos
             (datosDoc.gastos || []).forEach((g) => {
               const perteneceAProyectoCompartido = idsProyectosVistos.has(String(g.proyectoId));
               if ((esMiDocumento || perteneceAProyectoCompartido) && !idsGastosVistos.has(String(g.id))) {
                 idsGastosVistos.add(String(g.id));
-                gastosCombinados.push({ ...g, _uidOrigen: g._uidOrigen || uidDoc });
+                const autorGasto = g.creadoPor || autorPorDefecto;
+                const creadoPorMi = g.creadoPorUid
+                  ? g.creadoPorUid === user.uid
+                  : autorGasto.trim().toLowerCase() === miNombreMinusculas;
+
+                gastosCombinados.push({
+                  ...g,
+                  creadoPor: autorGasto,
+                  _esMio: creadoPorMi,
+                  _uidOrigen: g._uidOrigen || uidDoc
+                });
               }
             });
 
-            // Filtramos Horas
             (datosDoc.horas || []).forEach((h) => {
               const perteneceAProyectoCompartido = idsProyectosVistos.has(String(h.proyectoId));
               if ((esMiDocumento || perteneceAProyectoCompartido) && !idsHorasVistas.has(String(h.id))) {
                 idsHorasVistas.add(String(h.id));
-                horasCombinadas.push({ ...h, _uidOrigen: h._uidOrigen || uidDoc });
+                const autorHora = h.creadoPor || autorPorDefecto;
+                const creadoPorMi = h.creadoPorUid
+                  ? h.creadoPorUid === user.uid
+                  : autorHora.trim().toLowerCase() === miNombreMinusculas;
+
+                horasCombinadas.push({
+                  ...h,
+                  creadoPor: autorHora,
+                  _esMio: creadoPorMi,
+                  _uidOrigen: h._uidOrigen || uidDoc
+                });
               }
             });
           });
@@ -146,13 +166,12 @@ const Panel = () => {
     };
   }, [navigate]);
 
-  // 3. FUNCIONES DE GUARDADO EN LA NUBE (Actualizan el documento propietario correspondiente)
+  // 3. FUNCIONES DE GUARDADO CON SELLO DE AUTOR AUTOMÁTICO
   const setProyectos = async (nuevoValor) => {
     const nuevaLista = typeof nuevoValor === 'function' ? nuevoValor(proyectos) : nuevoValor;
     setProyectosState(nuevaLista);
     if (!usuarioActivo) return;
 
-    // Identificamos qué documentos de usuario necesitamos actualizar en Firestore
     const uidsAfectados = new Set([usuarioActivo]);
     proyectos.forEach(p => uidsAfectados.add(p._uidPropietario || usuarioActivo));
     nuevaLista.forEach(p => uidsAfectados.add(p._uidPropietario || usuarioActivo));
@@ -163,13 +182,14 @@ const Panel = () => {
         proyectos.filter(p => (p._uidPropietario || usuarioActivo) === uidDestino).map(p => String(p.id))
       );
 
-      // Mantenemos intactos los proyectos privados del compañero en los que no participamos
       const proyectosPrivadosIntactos = proyectosOriginalesDoc.filter(p => !idsQueEranVisibles.has(String(p.id)));
-
-      // Añadimos los proyectos actualizados que pertenecen a este documento
       const proyectosActualizados = nuevaLista
         .filter(p => (p._uidPropietario || usuarioActivo) === uidDestino)
-        .map(p => ({ ...p, _uidPropietario: uidDestino }));
+        .map(p => ({
+          ...p,
+          creadorNombre: p.creadorNombre || nombreUsuarioActual,
+          _uidPropietario: uidDestino
+        }));
 
       await setDoc(doc(db, 'usuarios', uidDestino), {
         proyectos: [...proyectosPrivadosIntactos, ...proyectosActualizados]
@@ -195,7 +215,13 @@ const Panel = () => {
       const gastosPrivadosIntactos = gastosOriginalesDoc.filter(g => !idsQueEranVisibles.has(String(g.id)));
       const gastosActualizados = nuevaLista
         .filter(g => (g._uidOrigen || usuarioActivo) === uidDestino)
-        .map(g => ({ ...g, _uidOrigen: uidDestino }));
+        .map(g => ({
+          ...g,
+          // Si es un gasto recién creado, le sellamos nuestro nombre de usuario
+          creadoPor: g.creadoPor || nombreUsuarioActual,
+          creadoPorUid: g.creadoPorUid || usuarioActivo,
+          _uidOrigen: uidDestino
+        }));
 
       await setDoc(doc(db, 'usuarios', uidDestino), {
         gastos: [...gastosPrivadosIntactos, ...gastosActualizados]
@@ -221,7 +247,12 @@ const Panel = () => {
       const horasPrivadasIntactas = horasOriginalesDoc.filter(h => !idsQueEranVisibles.has(String(h.id)));
       const horasActualizadas = nuevaLista
         .filter(h => (h._uidOrigen || usuarioActivo) === uidDestino)
-        .map(h => ({ ...h, _uidOrigen: uidDestino }));
+        .map(h => ({
+          ...h,
+          creadoPor: h.creadoPor || nombreUsuarioActual,
+          creadoPorUid: h.creadoPorUid || usuarioActivo,
+          _uidOrigen: uidDestino
+        }));
 
       await setDoc(doc(db, 'usuarios', uidDestino), {
         horas: [...horasPrivadasIntactas, ...horasActualizadas]
@@ -250,7 +281,6 @@ const Panel = () => {
     setTimeout(() => { setToast({ show: false, mensaje: '' }); }, 3000);
   };
 
-  // PANTALLA DE CARGA MIENTRAS SE CONECTA A FIREBASE
   if (cargandoDatos) {
     return (
       <div style={{ display: 'flex', height: '100vh', width: '100vw', justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' }}>
@@ -259,7 +289,6 @@ const Panel = () => {
     );
   }
 
-  // INTERFAZ PRINCIPAL
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', backgroundColor: '#f8fafc', fontFamily: 'system-ui, sans-serif', position: 'relative' }}>
       
@@ -276,7 +305,8 @@ const Panel = () => {
         horas, setHoras,
         gastos, setGastos,
         ajustes, setAjustes, 
-        mostrarToast
+        mostrarToast,
+        nombreUsuarioActual
       }} />
       
     </div>
